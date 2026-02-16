@@ -32,7 +32,7 @@ Atari ROMs are auto-installed by `ale-py`. No manual ROM download needed.
 Run tests to confirm everything works:
 
 ```bash
-uv run pytest -q
+make test
 ```
 
 ---
@@ -52,6 +52,40 @@ This project uses [Hydra](https://hydra.cc/) for configuration. Every run is com
 | `eval` | `default` | Eval episodes, epsilon |
 | `hardware` | `default` | Device, pin_memory |
 
+### Defaults
+
+With no arguments, `configs/config.yaml` defaults to Track A on Pong:
+
+```yaml
+defaults:
+  - agent: dqn
+  - env: pong
+  - preset: paper
+  - env_protocol: paper_v4
+  - replay: uniform
+  - training: default
+  - eval: default
+  - hardware: default
+
+seed: 42
+wandb:
+  enabled: false
+```
+
+So `make train` with no overrides runs vanilla DQN on Pong with seed 42 and wandb off.
+
+### Two ways to change config
+
+**Edit the YAML files** for permanent changes. For example, to always use a different learning rate, edit `configs/preset/paper.yaml` and change `lr: 0.00025` to your value. Every run that uses `preset=paper` will pick up the change.
+
+**Inline overrides** for one-off experiments. Pass them on the command line:
+
+```bash
+make train seed=123 preset.lr=0.001
+```
+
+Inline overrides take highest priority — they override whatever is in the YAML files, without modifying them.
+
 ### Valid track combinations
 
 **Track A** (paper-faithful):
@@ -66,88 +100,74 @@ agent=modern preset=modern replay=prioritized env_protocol=modern_v5_sticky
 
 Do not mix across tracks (e.g., `agent=dqn preset=modern`) unless you are deliberately running an ablation and understand what you're changing.
 
-### Defaults
-
-With no overrides, `config.yaml` defaults to Track A on Pong:
-```yaml
-agent: dqn
-env: pong
-preset: paper
-env_protocol: paper_v4
-replay: uniform
-seed: 42
-wandb.enabled: false
-```
-
 ---
 
-## 3. Training
+## 3. Commands
 
-### Track A (Pong)
+The `Makefile` provides targets for all common operations. Hydra overrides pass through directly:
+
+| Target | What it runs |
+|---|---|
+| `make train` | `uv run python scripts/train.py` |
+| `make evaluate` | `uv run python scripts/evaluate.py` |
+| `make video` | `uv run python scripts/record_video.py` |
+| `make dashboard` | `uv run streamlit run dashboard/app.py` |
+| `make test` | `uv run pytest -q` |
+| `make lint` | `uv run ruff check .` |
+| `make fmt` | `uv run ruff format .` |
+
+### Training
+
+**Track A (default — just run it):**
 
 ```bash
-uv run python scripts/train.py \
-  agent=dqn preset=paper replay=uniform env=pong env_protocol=paper_v4
+make train
 ```
 
-### Track B (Pong)
+**Track B:**
 
 ```bash
-uv run python scripts/train.py \
-  agent=modern preset=modern replay=prioritized env=pong env_protocol=modern_v5_sticky
+make train agent=modern preset=modern replay=prioritized env_protocol=modern_v5_sticky
 ```
 
-### Changing the game
-
-Replace `env=pong` with any of: `breakout`, `space_invaders`, `seaquest`, `qbert`.
+**Different game:**
 
 ```bash
-uv run python scripts/train.py \
-  agent=modern preset=modern replay=prioritized env=breakout env_protocol=modern_v5_sticky
+make train env=breakout
 ```
 
-### Overriding hyperparameters
+Replace `pong` with any of: `breakout`, `space_invaders`, `seaquest`, `qbert`.
 
-Hydra lets you override any config value from the command line:
+**Override a hyperparameter:**
 
 ```bash
-# Change seed
-uv run python scripts/train.py seed=123
-
-# Change learning rate
-uv run python scripts/train.py preset.lr=0.001
-
-# Change batch size
-uv run python scripts/train.py agent.batch_size=64
-
-# Shorter training (useful for debugging)
-uv run python scripts/train.py \
-  training.total_env_frames=1000000 \
-  training.warmup_random_steps=5000
-
-# Custom run name
-uv run python scripts/train.py run_name=my_experiment
+make train preset.lr=0.001
+make train agent.batch_size=64
 ```
 
-### Smoke test (quick sanity check)
+**Custom run name:**
 
 ```bash
-uv run python scripts/train.py \
+make train run_name=my_experiment
+```
+
+**Smoke test (quick sanity check):**
+
+```bash
+make train \
   training.total_env_frames=200000 \
   training.warmup_random_steps=10000 \
   eval.full_episodes=5 \
   wandb.enabled=false
 ```
 
-This runs ~200K frames (~50K agent steps) in a few minutes. Useful to verify nothing crashes before launching a full run.
+Runs ~200K frames (~50K agent steps) in a few minutes. Useful to verify nothing crashes before launching a full run.
 
-### Multi-seed runs
-
-For reproducible comparisons, run the same config with multiple seeds:
+**Multi-seed runs:**
 
 ```bash
 for s in 1 2 3; do
-  uv run python scripts/train.py \
+  make train \
     agent=modern preset=modern replay=prioritized env=pong env_protocol=modern_v5_sticky \
     seed=$s run_name=pong_modern_seed${s}
 done
@@ -155,7 +175,54 @@ done
 
 Report median and IQR across seeds for any performance claim.
 
-### What to expect during training
+### Evaluate a checkpoint
+
+```bash
+make evaluate \
+  agent=modern preset=modern env=pong env_protocol=modern_v5_sticky replay=prioritized \
+  +checkpoint_path=outputs/pong_modern_seed1/checkpoints/step_12500000
+```
+
+You **must** pass the same config groups (`agent`, `preset`, `env`, `env_protocol`, `replay`) that were used during training. The checkpoint only stores model weights — the config determines the network architecture and environment setup.
+
+This runs 30 episodes at epsilon=0.05 and prints mean/std/min/max return as JSON.
+
+To use the `best` or `latest` checkpoint symlink:
+
+```bash
++checkpoint_path=outputs/pong_modern_seed1/checkpoints/best
++checkpoint_path=outputs/pong_modern_seed1/checkpoints/latest
+```
+
+### Record gameplay video
+
+```bash
+make video \
+  agent=modern preset=modern env=pong env_protocol=modern_v5_sticky replay=prioritized \
+  +checkpoint_path=outputs/pong_modern_seed1/checkpoints/best \
+  +output_video=pong_best.mp4
+```
+
+Records one episode of gameplay at epsilon=0.05. Output is an MP4 at 30 fps. Same config requirement as evaluation.
+
+### Weights & Biases
+
+```bash
+wandb login   # one-time, paste your API key
+
+make train \
+  wandb.enabled=true \
+  wandb.project=atari-dqn \
+  wandb.entity=your-username \
+  wandb.run_name=pong_trackA_seed42 \
+  wandb.tags='[track_a,pong,seed42]'
+```
+
+Wandb is off by default (`wandb.enabled=false`). All metrics are also written to local CSV files (`train_log.csv`, `eval_log.csv`) in the run directory regardless of wandb settings.
+
+---
+
+## 4. What to Expect During Training
 
 - **Prefill phase**: ~50K random transitions are collected before training starts. Takes ~10-15 seconds. You'll see a "Prefill" progress bar.
 - **Training loop**: A "Train" progress bar shows agent steps. The postfix displays current `loss` and `eps` (epsilon). On an RTX 4090, expect ~70-90 minutes for a full 50M-frame run.
@@ -174,119 +241,7 @@ Report median and IQR across seeds for any performance claim.
 
 ---
 
-## 4. Weights & Biases
-
-### Enable wandb
-
-```bash
-wandb login   # one-time, paste your API key
-
-uv run python scripts/train.py \
-  wandb.enabled=true \
-  wandb.project=atari-dqn \
-  wandb.entity=your-username \
-  wandb.run_name=pong_trackA_seed42 \
-  wandb.tags='[track_a,pong,seed42]'
-```
-
-### Disable wandb (default)
-
-```bash
-uv run python scripts/train.py wandb.enabled=false
-```
-
-Wandb logs are supplementary. All metrics are also written to local CSV files (`train_log.csv`, `eval_log.csv`) in the run directory regardless of wandb settings.
-
----
-
-## 5. Evaluate a Checkpoint
-
-```bash
-uv run python scripts/evaluate.py \
-  agent=modern preset=modern env=pong env_protocol=modern_v5_sticky replay=prioritized \
-  +checkpoint_path=outputs/pong_modern_seed1/checkpoints/step_12500000
-```
-
-You **must** pass the same config groups (`agent`, `preset`, `env`, `env_protocol`, `replay`) that were used during training. The checkpoint only stores model weights — the config determines the network architecture and environment setup.
-
-This runs 30 episodes at epsilon=0.05 and prints mean/std/min/max return as JSON.
-
-To use the `best` or `latest` checkpoint symlink:
-
-```bash
-+checkpoint_path=outputs/pong_modern_seed1/checkpoints/best
-+checkpoint_path=outputs/pong_modern_seed1/checkpoints/latest
-```
-
----
-
-## 6. Record Gameplay Video
-
-```bash
-uv run python scripts/record_video.py \
-  agent=modern preset=modern env=pong env_protocol=modern_v5_sticky replay=prioritized \
-  +checkpoint_path=outputs/pong_modern_seed1/checkpoints/best \
-  +output_video=pong_best.mp4
-```
-
-Records one episode of gameplay at epsilon=0.05. Output is an MP4 at 30 fps. Same config requirement as evaluation.
-
----
-
-## 7. Run Ablations
-
-To measure the incremental contribution of each improvement, run these configs on the same game and seed:
-
-```bash
-GAME=pong
-SEED=42
-
-# 1. Vanilla DQN (baseline)
-uv run python scripts/train.py agent=dqn preset=paper replay=uniform env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_vanilla_s${SEED}
-
-# 2. + Double DQN only
-uv run python scripts/train.py agent.double=true preset=paper replay=uniform env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_s${SEED}
-
-# 3. + Double DQN + PER
-uv run python scripts/train.py agent.double=true preset=paper replay=prioritized env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_per_s${SEED}
-
-# 4. Full modern (Double + Dueling + PER)
-uv run python scripts/train.py agent=modern preset=modern replay=prioritized env=$GAME env_protocol=modern_v5_sticky seed=$SEED run_name=${GAME}_modern_s${SEED}
-```
-
-Note: ablation #4 uses a different `env_protocol` (sticky actions) and `preset` (Adam), so it's not a pure single-variable ablation. For a pure comparison, keep `preset=paper env_protocol=paper_v4` and only toggle `agent.network=dueling`:
-
-```bash
-# 3b. + Double DQN + PER + Dueling (paper preset, no sticky actions)
-uv run python scripts/train.py agent.double=true agent.network=dueling preset=paper replay=prioritized env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_per_dueling_s${SEED}
-```
-
----
-
-## 8. Adding a New Game
-
-Create a config file at `configs/env/<game>.yaml`:
-
-```yaml
-name: <game>
-game_id: ALE/<GameName>-v5
-```
-
-The `game_id` must match an ALE environment name. Find available games:
-
-```bash
-uv run python -c "import ale_py; print([e for e in ale_py.roms.get_all_rom_ids()])"
-```
-
-Then train:
-
-```bash
-uv run python scripts/train.py env=<game>
-```
-
----
-
-## 9. Output Directory Structure
+## 5. Output Directory Structure
 
 Each run creates `outputs/<run_name>/`:
 
@@ -325,10 +280,63 @@ The replay buffer is NOT checkpointed (it's ~7GB). On resume, it must be re-fill
 
 ---
 
-## 10. Dashboard
+## 6. Ablations
+
+To measure the incremental contribution of each improvement, run these configs on the same game and seed:
 
 ```bash
-uv run streamlit run dashboard/app.py
+GAME=pong
+SEED=42
+
+# 1. Vanilla DQN (baseline)
+make train agent=dqn preset=paper replay=uniform env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_vanilla_s${SEED}
+
+# 2. + Double DQN only
+make train agent.double=true preset=paper replay=uniform env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_s${SEED}
+
+# 3. + Double DQN + PER
+make train agent.double=true preset=paper replay=prioritized env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_per_s${SEED}
+
+# 4. Full modern (Double + Dueling + PER)
+make train agent=modern preset=modern replay=prioritized env=$GAME env_protocol=modern_v5_sticky seed=$SEED run_name=${GAME}_modern_s${SEED}
+```
+
+Note: ablation #4 uses a different `env_protocol` (sticky actions) and `preset` (Adam), so it's not a pure single-variable ablation. For a pure comparison, keep `preset=paper env_protocol=paper_v4` and only toggle `agent.network=dueling`:
+
+```bash
+# 3b. + Double DQN + PER + Dueling (paper preset, no sticky actions)
+make train agent.double=true agent.network=dueling preset=paper replay=prioritized env=$GAME env_protocol=paper_v4 seed=$SEED run_name=${GAME}_double_per_dueling_s${SEED}
+```
+
+---
+
+## 7. Adding a New Game
+
+Create a config file at `configs/env/<game>.yaml`:
+
+```yaml
+name: <game>
+game_id: ALE/<GameName>-v5
+```
+
+The `game_id` must match an ALE environment name. Find available games:
+
+```bash
+uv run python -c "import ale_py; print([e for e in ale_py.roms.get_all_rom_ids()])"
+```
+
+Then train:
+
+```bash
+make train env=<game>
+```
+
+---
+
+## 8. Dashboard
+
+```bash
+make dashboard
 ```
 
 The dashboard reads from `outputs/` to find all completed runs. It has 5 pages:
@@ -343,7 +351,7 @@ The dashboard reads from `outputs/` to find all completed runs. It has 5 pages:
 
 ---
 
-## 11. Full Config Reference
+## 9. Full Config Reference
 
 ### `agent/dqn.yaml` (Track A default)
 
@@ -441,27 +449,7 @@ Same structure. Key differences: `repeat_action_probability=0.25`, `eval_max_epi
 
 ---
 
-## 12. Makefile Shortcuts
-
-```bash
-make train       # uv run python scripts/train.py
-make evaluate    # uv run python scripts/evaluate.py
-make video       # uv run python scripts/record_video.py
-make dashboard   # uv run streamlit run dashboard/app.py
-make test        # uv run pytest -q
-make lint        # uv run ruff check .
-make fmt         # uv run ruff format .
-```
-
-All Hydra overrides work with `make` targets:
-
-```bash
-make train agent=modern preset=modern env=breakout replay=prioritized env_protocol=modern_v5_sticky
-```
-
----
-
-## 13. Troubleshooting
+## 10. Troubleshooting
 
 | Problem | Cause | Fix |
 |---|---|---|
