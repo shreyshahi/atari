@@ -1,0 +1,8 @@
+total_env_frames: 50000000
+warmup_random_steps: 50000
+log_every_steps: 1000
+light_eval_every_frames: 500000
+full_eval_every_frames: 2000000
+checkpoint_every_frames: 2000000
+save_video_every_frames: 2000000
+train_episodes: null

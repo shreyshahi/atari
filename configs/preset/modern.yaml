@@ -1,0 +1,11 @@
+name: modern
+optimizer: adam
+lr: 0.0000625
+rmsprop_decay: 0.95
+rmsprop_momentum: 0.95
+rmsprop_eps: 0.01
+adam_eps: 0.00015
+epsilon_start: 1.0
+epsilon_end: 0.01
+epsilon_decay_frames: 1000000
+reward_clip: true

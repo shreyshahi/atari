@@ -1,0 +1,5 @@
+light_episodes: 10
+full_episodes: 30
+epsilon: 0.05
+vector_envs: 1
+record_video: true

@@ -1,0 +1,4 @@
+device: auto
+num_env_workers: 1
+pin_memory: true
+non_blocking: true

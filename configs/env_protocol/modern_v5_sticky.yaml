@@ -1,0 +1,8 @@
+name: modern_v5_sticky
+repeat_action_probability: 0.25
+frameskip: 1
+full_action_space: false
+noop_max: 30
+terminal_on_life_loss_train: true
+terminal_on_life_loss_eval: false
+eval_max_episode_frames: 108000

@@ -1,0 +1,8 @@
+name: prioritized
+capacity: 1000000
+prioritized: true
+alpha: 0.6
+beta_start: 0.4
+beta_end: 1.0
+beta_decay_frames: 50000000
+priority_eps: 0.000001

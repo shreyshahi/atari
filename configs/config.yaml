@@ -1,0 +1,21 @@
+defaults:
+  - agent: dqn
+  - env: pong
+  - preset: paper
+  - env_protocol: paper_v4
+  - replay: uniform
+  - training: default
+  - eval: default
+  - hardware: default
+  - _self_
+
+seed: 42
+output_dir: outputs
+run_name: null
+
+wandb:
+  enabled: false
+  project: atari-dqn
+  entity: null
+  run_name: null
+  tags: []
