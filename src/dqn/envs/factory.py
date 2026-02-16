@@ -20,6 +20,7 @@ def _validate_protocol(cfg: DictConfig) -> None:
     required = [
         "repeat_action_probability",
         "frameskip",
+        "action_repeat",
         "full_action_space",
         "noop_max",
         "terminal_on_life_loss_train",
@@ -53,7 +54,7 @@ def make_atari_env(cfg: DictConfig, eval_mode: bool = False, render_mode: str | 
 
     env = _make_base_env(cfg, render_mode=render_mode)
     env = NoopResetEnv(env, noop_max=int(cfg.env_protocol.noop_max))
-    env = MaxAndSkipEnv(env, skip=4)
+    env = MaxAndSkipEnv(env, skip=int(cfg.env_protocol.action_repeat))
 
     if not eval_mode and bool(cfg.env_protocol.terminal_on_life_loss_train):
         env = EpisodicLifeEnv(env)

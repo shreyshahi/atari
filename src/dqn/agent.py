@@ -29,6 +29,8 @@ class DQNAgent:
         self.target_net = _build_network(cfg, n_actions).to(device)
         self.sync_target_network()
         self.target_net.eval()
+        for p in self.target_net.parameters():
+            p.requires_grad_(False)
 
         self.gamma = float(cfg.agent.gamma)
         self.use_double = bool(cfg.agent.double)
@@ -110,6 +112,14 @@ class DQNAgent:
         loss.backward()
 
         grad_norm = torch.tensor(0.0, device=self.device)
+        has_nonfinite_grad = False
+        for p in self.online_net.parameters():
+            if p.grad is None:
+                continue
+            if not torch.isfinite(p.grad).all():
+                has_nonfinite_grad = True
+                break
+
         if self.max_grad_norm is not None:
             grad_norm = torch.nn.utils.clip_grad_norm_(
                 self.online_net.parameters(), float(self.max_grad_norm)
@@ -133,6 +143,7 @@ class DQNAgent:
             "mean_q": mean_q,
             "max_q": max_q,
             "grad_norm": float(grad_norm.item()),
+            "has_nonfinite_grad": has_nonfinite_grad,
             "td_errors": td_errors.detach().cpu().numpy(),
         }
 

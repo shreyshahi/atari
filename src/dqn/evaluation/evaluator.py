@@ -18,6 +18,7 @@ class EvalResult:
     min_return: float
     max_return: float
     episode_returns: list[float]
+    episode_lengths: list[int]
 
 
 class Evaluator:
@@ -34,6 +35,7 @@ class Evaluator:
     ) -> EvalResult:
         env = make_atari_env(self.cfg, eval_mode=True, render_mode="rgb_array" if record_video else None)
         returns: list[float] = []
+        lengths: list[int] = []
 
         writer = None
         if record_video and video_path is not None:
@@ -41,10 +43,11 @@ class Evaluator:
             writer = imageio.get_writer(video_path, fps=30)
 
         max_env_frames = int(self.cfg.env_protocol.eval_max_episode_frames)
-        max_steps = max(1, max_env_frames // 4)
+        action_repeat = int(self.cfg.env_protocol.action_repeat)
+        max_steps = max(1, max_env_frames // action_repeat)
 
         for ep in range(episodes):
-            state, _ = env.reset()
+            state, _ = env.reset(seed=int(self.cfg.seed) + ep)
             done = False
             ep_return = 0.0
             steps = 0
@@ -63,6 +66,7 @@ class Evaluator:
                 steps += 1
 
             returns.append(ep_return)
+            lengths.append(steps)
 
         if writer is not None:
             writer.close()
@@ -75,4 +79,5 @@ class Evaluator:
             min_return=float(arr.min()),
             max_return=float(arr.max()),
             episode_returns=returns,
+            episode_lengths=lengths,
         )

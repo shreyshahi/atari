@@ -69,7 +69,8 @@ class UniformReplayBuffer:
         max_abs = self.num_added - 2
         return max_abs >= min_abs and batch_size > 0
 
-    def sample(self, batch_size: int) -> dict[str, Any]:
+    def sample(self, batch_size: int, env_frames: int | None = None) -> dict[str, Any]:
+        _ = env_frames
         if not self.can_sample(batch_size):
             raise RuntimeError("Not enough data in replay buffer")
 
@@ -95,6 +96,10 @@ class UniformReplayBuffer:
     def update_priorities(self, indices: np.ndarray, priorities: np.ndarray) -> None:
         _ = indices, priorities
         return
+
+    def diagnostics(self, sample_indices: np.ndarray, sample_weights: np.ndarray) -> dict[str, float]:
+        _ = sample_indices, sample_weights
+        return {}
 
     def _sample_abs_index(self) -> int:
         lower_bound = max(0, self.num_added - self.size)

@@ -25,10 +25,20 @@ class DuelingDQN(nn.Module):
         self._init_linear()
 
     def _init_linear(self) -> None:
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_uniform_(m.weight, nonlinearity="relu")
-                nn.init.zeros_(m.bias)
+        value_hidden = self.value[0]
+        value_out = self.value[2]
+        adv_hidden = self.advantage[0]
+        adv_out = self.advantage[2]
+
+        nn.init.kaiming_uniform_(value_hidden.weight, nonlinearity="relu")
+        nn.init.zeros_(value_hidden.bias)
+        nn.init.kaiming_uniform_(adv_hidden.weight, nonlinearity="relu")
+        nn.init.zeros_(adv_hidden.bias)
+
+        nn.init.kaiming_uniform_(value_out.weight, nonlinearity="linear")
+        nn.init.zeros_(value_out.bias)
+        nn.init.kaiming_uniform_(adv_out.weight, nonlinearity="linear")
+        nn.init.zeros_(adv_out.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         z = self.encoder(x)

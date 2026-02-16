@@ -38,11 +38,12 @@ class PrioritizedReplayBuffer(UniformReplayBuffer):
         self.phys_to_abs[phys] = abs_index
         self.sum_tree.update(phys, self.max_priority)
 
-    def sample(self, batch_size: int) -> dict[str, Any]:
+    def sample(self, batch_size: int, env_frames: int | None = None) -> dict[str, Any]:
         if not self.can_sample(batch_size):
             raise RuntimeError("Not enough data in replay buffer")
 
-        beta = self._beta_by_frame(self.num_added)
+        frame_count = self.num_added if env_frames is None else int(env_frames)
+        beta = self._beta_by_frame(frame_count)
         total = self.sum_tree.total
         if total <= 0:
             return super().sample(batch_size)
@@ -56,12 +57,21 @@ class PrioritizedReplayBuffer(UniformReplayBuffer):
             i = len(abs_indices)
             low = segment * i
             high = segment * (i + 1)
-            mass = np.random.uniform(low, high)
-            phys, priority = self.sum_tree.get(mass)
-            abs_index = int(self.phys_to_abs[phys])
+            abs_index = -1
+            phys = -1
+            priority = self.priority_eps
 
-            if not self._is_valid_abs_index(abs_index):
-                # fallback to uniform valid index if sampled slot is stale/newest
+            for _ in range(10):
+                mass = np.random.uniform(low, high)
+                phys_cand, priority_cand = self.sum_tree.get(mass)
+                abs_cand = int(self.phys_to_abs[phys_cand])
+                if self._is_valid_abs_index(abs_cand):
+                    abs_index = abs_cand
+                    phys = phys_cand
+                    priority = priority_cand
+                    break
+
+            if phys < 0:
                 abs_index = self._sample_abs_index()
                 phys = abs_index % self.capacity
                 priority = max(self.sum_tree.tree[phys + self.capacity], self.priority_eps)
@@ -74,7 +84,14 @@ class PrioritizedReplayBuffer(UniformReplayBuffer):
         probs = np.clip(probs, self.priority_eps, 1.0)
         n = max(1, self.size)
         weights = (n * probs) ** (-beta)
-        weights /= weights.max()
+
+        valid_leaf_probs = self._valid_leaf_probs(total)
+        if valid_leaf_probs.size > 0:
+            min_prob = float(valid_leaf_probs.min())
+            max_weight = (n * min_prob) ** (-beta)
+            weights /= max_weight
+        else:
+            weights /= weights.max()
 
         states = np.stack([self._encode_stack(i) for i in abs_indices], axis=0)
         next_states = np.stack([self._encode_stack(i + 1) for i in abs_indices], axis=0)
@@ -105,6 +122,45 @@ class PrioritizedReplayBuffer(UniformReplayBuffer):
     def _beta_by_frame(self, frame: int) -> float:
         frac = min(1.0, frame / self.beta_decay_frames)
         return self.beta_start + frac * (self.beta_end - self.beta_start)
+
+    def _valid_leaf_probs(self, total: float) -> np.ndarray:
+        if total <= 0:
+            return np.array([], dtype=np.float64)
+        valid_phys = [
+            phys for phys, abs_idx in enumerate(self.phys_to_abs) if self._is_valid_abs_index(int(abs_idx))
+        ]
+        if not valid_phys:
+            return np.array([], dtype=np.float64)
+        leaves = self.sum_tree.tree[self.capacity + np.array(valid_phys, dtype=np.int64)]
+        leaves = np.clip(leaves / total, self.priority_eps, 1.0)
+        return leaves.astype(np.float64)
+
+    def diagnostics(self, sample_indices: np.ndarray, sample_weights: np.ndarray) -> dict[str, float]:
+        sample_indices = np.asarray(sample_indices, dtype=np.int64)
+        sample_weights = np.asarray(sample_weights, dtype=np.float32)
+
+        valid_phys = [
+            phys for phys, abs_idx in enumerate(self.phys_to_abs) if self._is_valid_abs_index(int(abs_idx))
+        ]
+        if valid_phys:
+            priorities = self.sum_tree.tree[self.capacity + np.array(valid_phys, dtype=np.int64)]
+        else:
+            priorities = np.array([0.0], dtype=np.float64)
+
+        sampled_abs = self.phys_to_abs[sample_indices]
+        sample_ages = self.num_added - sampled_abs
+
+        return {
+            "replay_priority_mean": float(np.mean(priorities)),
+            "replay_priority_std": float(np.std(priorities)),
+            "replay_priority_max": float(np.max(priorities)),
+            "replay_sample_age_mean": float(np.mean(sample_ages)),
+            "replay_sample_age_std": float(np.std(sample_ages)),
+            "replay_sample_age_max": float(np.max(sample_ages)),
+            "replay_is_weight_mean": float(np.mean(sample_weights)),
+            "replay_is_weight_std": float(np.std(sample_weights)),
+            "replay_is_weight_max": float(np.max(sample_weights)),
+        }
 
     def _is_valid_abs_index(self, abs_index: int) -> bool:
         if abs_index < 0:

@@ -18,10 +18,12 @@ class NatureDQN(nn.Module):
         self._init_linear()
 
     def _init_linear(self) -> None:
-        for m in self.modules():
-            if isinstance(m, nn.Linear):
-                nn.init.kaiming_uniform_(m.weight, nonlinearity="relu")
-                nn.init.zeros_(m.bias)
+        hidden = self.head[0]
+        output = self.head[2]
+        nn.init.kaiming_uniform_(hidden.weight, nonlinearity="relu")
+        nn.init.zeros_(hidden.bias)
+        nn.init.kaiming_uniform_(output.weight, nonlinearity="linear")
+        nn.init.zeros_(output.bias)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.head(self.encoder(x))

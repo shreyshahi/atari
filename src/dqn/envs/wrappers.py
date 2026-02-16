@@ -35,11 +35,11 @@ class MaxAndSkipEnv(gym.Wrapper):
         terminated = False
         truncated = False
         info = {}
+        self.obs_buffer.fill(0)
 
         for i in range(self.skip):
             obs, reward, term, trunc, info = self.env.step(action)
-            if i >= self.skip - 2:
-                self.obs_buffer[i - (self.skip - 2)] = obs
+            self.obs_buffer[i % 2] = obs
             total_reward += reward
             terminated = terminated or term
             truncated = truncated or trunc

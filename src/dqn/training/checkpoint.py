@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,7 @@ class CheckpointManager:
                 "step": step,
                 "path": str(ckpt_dir),
                 "eval_score": metrics.get("eval_mean_return"),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
         )
         self.catalog_path.write_text(json.dumps(self._catalog, indent=2), encoding="utf-8")
@@ -69,4 +71,7 @@ class CheckpointManager:
         _symlink_force(target, self.checkpoints_dir / "best")
 
     def load_agent_state(self, checkpoint_path: Path) -> dict[str, Any]:
-        return torch.load(checkpoint_path / "agent.pt", map_location="cpu")
+        try:
+            return torch.load(checkpoint_path / "agent.pt", map_location="cpu", weights_only=True)
+        except TypeError:
+            return torch.load(checkpoint_path / "agent.pt", map_location="cpu")

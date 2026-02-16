@@ -1,10 +1,25 @@
 from __future__ import annotations
 
-import json
-
 import streamlit as st
+from omegaconf import OmegaConf
 
 from dashboard.utils import discover_runs
+
+
+def _flatten(obj, prefix=""):
+    out = {}
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            key = f"{prefix}.{k}" if prefix else str(k)
+            out.update(_flatten(v, key))
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            key = f"{prefix}[{i}]"
+            out.update(_flatten(v, key))
+    else:
+        out[prefix] = obj
+    return out
+
 
 st.title("Config Diff Viewer")
 runs = discover_runs()
@@ -30,9 +45,22 @@ if right_cfg.exists():
 else:
     st.warning("Run B config missing")
 
-summary = {
-    "run_a": left.name,
-    "run_b": right.name,
-    "note": "Visual side-by-side diff. Add structural YAML diff in future iteration.",
-}
-st.json(summary)
+if left_cfg.exists() and right_cfg.exists():
+    left_dict = OmegaConf.to_container(OmegaConf.load(left_cfg), resolve=True)
+    right_dict = OmegaConf.to_container(OmegaConf.load(right_cfg), resolve=True)
+    left_flat = _flatten(left_dict)
+    right_flat = _flatten(right_dict)
+
+    all_keys = sorted(set(left_flat) | set(right_flat))
+    rows = []
+    for key in all_keys:
+        lv = left_flat.get(key, "<missing>")
+        rv = right_flat.get(key, "<missing>")
+        if lv != rv:
+            rows.append({"key": key, "run_a": lv, "run_b": rv})
+
+    st.subheader("Changed Fields")
+    if rows:
+        st.dataframe(rows, use_container_width=True)
+    else:
+        st.info("No config differences found.")

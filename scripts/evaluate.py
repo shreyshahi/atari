@@ -27,7 +27,10 @@ def main(cfg: DictConfig) -> None:
     agent = DQNAgent(cfg, n_actions=int(env.action_space.n), device=device)
     env.close()
 
-    ckpt = torch.load(Path(checkpoint_path) / "agent.pt", map_location=device)
+    try:
+        ckpt = torch.load(Path(checkpoint_path) / "agent.pt", map_location=device, weights_only=True)
+    except TypeError:
+        ckpt = torch.load(Path(checkpoint_path) / "agent.pt", map_location=device)
     agent.load_state_dict(ckpt)
 
     evaluator = Evaluator(cfg)

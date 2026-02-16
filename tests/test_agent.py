@@ -48,3 +48,19 @@ def test_double_target_differs_when_argmax_differs(cfg):
     double = agent.compute_target_q(next_states, rewards, dones)
 
     assert not torch.allclose(vanilla, double)
+
+
+def test_select_action_epsilon_zero_is_greedy(cfg):
+    agent = DQNAgent(cfg, n_actions=2, device=torch.device("cpu"))
+    agent.online_net = StubNet([0.1, 0.9])
+    state = np.random.randint(0, 256, (4, 84, 84), dtype=np.uint8)
+    actions = [agent.select_action(state, epsilon=0.0) for _ in range(50)]
+    assert all(a == 1 for a in actions)
+
+
+def test_select_action_epsilon_one_is_random(cfg):
+    agent = DQNAgent(cfg, n_actions=3, device=torch.device("cpu"))
+    agent.online_net = StubNet([0.1, 0.9, 0.2])
+    state = np.random.randint(0, 256, (4, 84, 84), dtype=np.uint8)
+    actions = [agent.select_action(state, epsilon=1.0) for _ in range(200)]
+    assert len(set(actions)) > 1
